@@ -1,0 +1,9 @@
+﻿using Microsoft.AspNetCore.Identity;
+
+namespace PD421_Dashboard_WEB_API.DAL.Entitites.Identity
+{
+    public class ApplicationUserClaim : IdentityUserClaim<string>
+    {
+        public virtual ApplicationUser? User { get; set; }
+    }
+}
