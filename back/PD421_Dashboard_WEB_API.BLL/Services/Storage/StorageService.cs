@@ -7,13 +7,10 @@ namespace PD421_Dashboard_WEB_API.BLL.Services.Storage
     public class StorageService : IStorageService
     {
         private readonly BlobContainerClient _containerClient;
-        private readonly string _containerName;
 
-        public StorageService(BlobContainerClient containerClient, IConfiguration configuration)
+        public StorageService(BlobContainerClient containerClient)
         {
             _containerClient = containerClient;
-            _containerName = configuration.GetValue<string>("AzureStorage:ContainerName") 
-                             ?? throw new ArgumentNullException("ContainerName not found in configuration.");
         }
 
         public async Task<string?> SaveImageAsync(IFormFile file, string folderPath)
