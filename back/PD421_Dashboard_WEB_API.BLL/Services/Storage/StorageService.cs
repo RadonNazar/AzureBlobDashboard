@@ -1,32 +1,52 @@
-﻿using Microsoft.AspNetCore.Http;
+using Azure.Storage.Blobs;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 
 namespace PD421_Dashboard_WEB_API.BLL.Services.Storage
 {
     public class StorageService : IStorageService
     {
+        private readonly BlobContainerClient _containerClient;
+        private readonly string _containerName;
+
+        public StorageService(BlobContainerClient containerClient, IConfiguration configuration)
+        {
+            _containerClient = containerClient;
+            _containerName = configuration.GetValue<string>("AzureStorage:ContainerName") 
+                             ?? throw new ArgumentNullException("ContainerName not found in configuration.");
+        }
+
         public async Task<string?> SaveImageAsync(IFormFile file, string folderPath)
         {
+            if (file == null || file.Length == 0)
+            {
+                return null;
+            }
+            
+            if (!file.ContentType.StartsWith("image/"))
+            {
+                 return null;
+            }
+
             try
             {
-                var types = file.ContentType.Split('/');
-                if (types.Length != 2 || types[0] != "image")
-                {
-                    return null;
-                }
-
                 string extension = Path.GetExtension(file.FileName);
-                string imageName = $"{Guid.NewGuid()}{extension}";
-                string imagePath = Path.Combine(folderPath, imageName);
+                string blobName = $"{folderPath}/{Guid.NewGuid()}{extension}";
+                
+                BlobClient blobClient = _containerClient.GetBlobClient(blobName);
 
-                using (var stream = File.Create(imagePath))
+                var httpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = file.ContentType };
+
+                using (var stream = file.OpenReadStream())
                 {
-                    await file.CopyToAsync(stream);
+                    await blobClient.UploadAsync(stream, httpHeaders);
                 }
 
-                return imageName;
+                return blobName;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine($"Error saving image to Azure: {ex.Message}");
                 return null;
             }
         }
@@ -36,6 +56,26 @@ namespace PD421_Dashboard_WEB_API.BLL.Services.Storage
             var tasks = files.Select(file => SaveImageAsync(file, folderPath));
             var results = await Task.WhenAll(tasks);
             return results.Where(res => res != null)!;
+        }
+
+        public async Task<bool> DeleteImageAsync(string blobPath)
+        {
+            if (string.IsNullOrEmpty(blobPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                BlobClient blobClient = _containerClient.GetBlobClient(blobPath);
+
+                return await blobClient.DeleteIfExistsAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting image from Azure: {ex.Message}");
+                return false;
+            }
         }
     }
 }
