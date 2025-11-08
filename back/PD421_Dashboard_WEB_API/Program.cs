@@ -14,6 +14,8 @@ using PD421_Dashboard_WEB_API.DAL.Repositories.Genre;
 using PD421_Dashboard_WEB_API.Infrastructure;
 using PD421_Dashboard_WEB_API.Middlewares;
 using Serilog;
+// 💡 Додаємо using для Azure Storage
+using Azure.Storage.Blobs; 
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -56,7 +58,7 @@ builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
 // Add automapper
 builder.Services.AddAutoMapper(cfg =>
 {
-    cfg.LicenseKey = "eyJhbGciOiJSUzI1NiIsImtpZCI6Ikx1Y2t5UGVubnlTb2Z0d2FyZUxpY2Vuc2VLZXkvYmJiMTNhY2I1OTkwNGQ4OWI0Y2IxYzg1ZjA4OGNjZjkiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2x1Y2t5cGVubnlzb2Z0d2FyZS5jb20iLCJhdWQiOiJMdWNreVBlbm55U29mdHdhcmUiLCJleHAiOiIxNzg5NTE2ODAwIiwiaWF0IjoiMTc1ODAwNDY5MiIsImFjY291bnRfaWQiOiIwMTk5NTEzZTdlYmY3YjYwOGI4Y2I3NTI3YTE3ZTI5MyIsImN1c3RvbWVyX2lkIjoiY3RtXzAxazU4a3hoZXN2ZWI3aDZncms2MHBrYXJrIiwic3ViX2lkIjoiLSIsImVkaXRpb24iOiIwIiwidHlwZSI6IjIifQ.OMUeI0YxSQYUSUYehr5O6yevTWgsGamrSrCFSZ7Sd3fNsl01WU-pr6M6wusxNSxoQ6w8-lqrjOk6gj8KShQQhmvz91wRuRm_rObvAaDQEBRDit7iSUe6J7EH8lDmpqlUuJQ8zN0lCTgIDwaHDaI9h4FcSVy6qmi68oETGI876KCUf5ifCCwDSpZjirIws5XvO6IpQEkCp8FWd2UkTWvrHaaJWFbxOWfKbx_j5AeHPE1o5Piiz7qF6QKX8MzOj44f0yRExRKMCeQSauqRBgO33CooOm0mxbU2-Mx5tb3PPHdaFe7YxPKdRYSJ1TsRn3DELSrxnKsPE11X4eIXYuJh6w";
+    cfg.LicenseKey = "eyJhbGciOiJSUzI1NiIsImtpZCI6Ikx1Y2t5UGVubnlTb2Z0d2FyZUxpY2Vuc2VLZXkvYmJiMTNhY2I1OTkwNGQ4OWI0Y2IxYzg1ZjA4OGNjZjkiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2x1Y2t5cGVubnlzb2Z0d2FyZS5jb20iLCJhdWQiOiJMdWNreVBlbm55U29mdHdhcmUiLCJleHAiOiIxNzg5NTE2ODAwIiwiaWF0IjoiMTc1ODAwNDY5MiIsImFjY291bnRfaWQiOiIwMTk5NTEzZTdlYmY3YjYwOGI4Y2I3NTI3YTE3ZTI5MyIsImN1c3RvbWVyX2lkIjoiY3RtXzAxazU4a3hoZXN2ZWI3aDZncms2MHBrYXJrIiwic3ViX2lkIjoiLSIsImVkaXRpb24iOiIwIiwidHlwZSI6IjIifQ.OMUeI0YxSQYUSUYehr5O6yevTWgsGamrSrCFSZ7Sd3fNsl01WU-pr6M6wusxNSxoQ6w8-lqrjOk6gj8KShQQhmvz91wRuRm_rObvAaDQEBRDit7iSUe6J7EH8lDmpqlUuJQ8zN0lCTgIDwaHDaI9h4FcSVy6qmi68oETGI876KCUf5ifCCwDSpZjirIws5XvO6IpQEkCp8FWd2UkTWvrHaaJWFbxOWfKbx_j5AeHPE1o5Piiz7qF6QKX8MzOj44f0yRExRKMCeQSauuRBgO33CooOm0mxbU2-Mx5tb3PPHdaFe7YxPKdRYSJ1TsRn3DELSrxnKsPE11X4eIXYuJh6w";
 }, AppDomain.CurrentDomain.GetAssemblies());
 
 // Add repositories
@@ -67,6 +69,32 @@ builder.Services.AddScoped<IGenreRepository, GenreRepository>();
 builder.Services.AddScoped<IGenreService, GenreService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGameService, GameService>();
+
+// 💡 Налаштування Azure Blob Storage та реєстрація клієнта
+var azureConnectionString = builder.Configuration.GetConnectionString("AzureStorage:ConnectionString");
+var containerName = builder.Configuration.GetValue<string>("AzureStorage:ContainerName");
+
+if (string.IsNullOrEmpty(azureConnectionString) || string.IsNullOrEmpty(containerName))
+{
+    // Важливо: Якщо конфігурація відсутня, кидаємо виняток або використовуємо заглушку.
+    // Тут ми просто логуємо попередження і продовжуємо, але в реальному житті це може бути фатально.
+    Log.Warning("Azure Storage Connection String or Container Name is missing in configuration. Storage operations will likely fail.");
+}
+else
+{
+    // Реєстрація BlobContainerClient як Singleton
+    builder.Services.AddSingleton(x => 
+    {
+        var blobServiceClient = new BlobServiceClient(azureConnectionString);
+        // Створюємо контейнер, якщо він ще не існує
+        var container = blobServiceClient.GetBlobContainerClient(containerName);
+        container.CreateIfNotExists(); 
+        return container;
+    });
+}
+
+// Реєстрація StorageService тепер залежить від BlobContainerClient, 
+// який ми зареєстрували вище. Якщо DI не зможе його знайти, це може викликати помилку.
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
@@ -93,8 +121,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 //if (app.Environment.IsDevelopment())
 //{
-//    app.UseSwagger();
-//    app.UseSwaggerUI();
+//  app.UseSwagger();
+//  app.UseSwaggerUI();
 //}
 
 app.UseSwagger();
